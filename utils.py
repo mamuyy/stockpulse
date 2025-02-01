@@ -79,6 +79,62 @@ def calculate_ichimoku(data):
 
     return tenkan, kijun, senkou_a, senkou_b, chikou
 
+def calculate_momentum(data, period=10):
+    """Hitung indikator momentum"""
+    return data['Close'].diff(period)
+
+def analyze_volume_trend(data, period=20):
+    """Analisis tren volume"""
+    volume_ma = data['Volume'].rolling(window=period).mean()
+    volume_ratio = data['Volume'] / volume_ma
+    return volume_ratio
+
+def calculate_market_correlation(symbol, market_index='^JKSE', period='1y'):
+    """Hitung korelasi dengan indeks pasar"""
+    try:
+        # Ambil data saham
+        stock = yf.download(symbol, period=period)
+        # Ambil data indeks (IHSG untuk Indonesia)
+        market = yf.download(market_index, period=period)
+
+        # Hitung return harian
+        stock_returns = stock['Close'].pct_change()
+        market_returns = market['Close'].pct_change()
+
+        # Hitung korelasi
+        correlation = stock_returns.corr(market_returns)
+        return correlation, None
+    except Exception as e:
+        return None, str(e)
+
+def get_quantitative_signals(data):
+    """Implementasi sinyal trading kuantitatif sederhana"""
+    signals = {}
+
+    # 1. Momentum Signal
+    momentum = calculate_momentum(data)
+    signals['momentum'] = 'Bullish' if momentum.iloc[-1] > 0 else 'Bearish'
+
+    # 2. Volume Analysis
+    volume_trend = analyze_volume_trend(data)
+    signals['volume'] = 'Di Atas Normal' if volume_trend.iloc[-1] > 1.5 else \
+                       'Di Bawah Normal' if volume_trend.iloc[-1] < 0.5 else 'Normal'
+
+    # 3. Volatility
+    returns = data['Close'].pct_change()
+    volatility = returns.std() * np.sqrt(252)  # Annualized volatility
+    signals['volatility'] = f"{volatility:.2%}"
+
+    # 4. Trend Strength
+    ma20 = data['Close'].rolling(window=20).mean()
+    ma50 = data['Close'].rolling(window=50).mean()
+    trend = 'Uptrend Kuat' if (data['Close'].iloc[-1] > ma20.iloc[-1] > ma50.iloc[-1]) else \
+            'Downtrend Kuat' if (data['Close'].iloc[-1] < ma20.iloc[-1] < ma50.iloc[-1]) else \
+            'Sideways'
+    signals['trend'] = trend
+
+    return signals
+
 def create_stock_chart(df, show_indicators=None):
     """Buat grafik harga saham interaktif dengan indikator teknikal"""
     if show_indicators is None:

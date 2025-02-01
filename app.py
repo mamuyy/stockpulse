@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
-from utils import get_stock_data, create_stock_chart, get_key_metrics
+from utils import (get_stock_data, create_stock_chart, get_key_metrics,
+                  calculate_macd, calculate_bollinger_bands, calculate_ichimoku,
+                  get_quantitative_signals, calculate_market_correlation)
 import base64
 from datetime import datetime
 
@@ -84,6 +86,72 @@ if symbol:
         st.subheader('Grafik Harga')
         fig = create_stock_chart(hist_data, show_indicators=indicators)
         st.plotly_chart(fig, use_container_width=True)
+
+        # Analisis Kuantitatif (Metode James Simons)
+        st.subheader('📊 Analisis Kuantitatif (Metode James Simons)')
+
+        # Dapatkan sinyal kuantitatif
+        quant_signals = get_quantitative_signals(hist_data)
+
+        # Tampilkan dalam 4 kolom
+        quant_cols = st.columns(4)
+
+        with quant_cols[0]:
+            st.metric("Momentum", quant_signals['momentum'])
+            if quant_signals['momentum'] == 'Bullish':
+                st.markdown('🟢 Momentum Positif')
+            else:
+                st.markdown('🔴 Momentum Negatif')
+
+        with quant_cols[1]:
+            st.metric("Volume", quant_signals['volume'])
+            if quant_signals['volume'] == 'Di Atas Normal':
+                st.markdown('🟢 Volume Tinggi')
+            elif quant_signals['volume'] == 'Di Bawah Normal':
+                st.markdown('🔴 Volume Rendah')
+            else:
+                st.markdown('⚪ Volume Normal')
+
+        with quant_cols[2]:
+            st.metric("Volatilitas", quant_signals['volatility'])
+            volatility_value = float(quant_signals['volatility'].strip('%'))
+            if volatility_value > 40:
+                st.markdown('🔴 Volatilitas Tinggi')
+            elif volatility_value < 20:
+                st.markdown('🟢 Volatilitas Rendah')
+            else:
+                st.markdown('⚪ Volatilitas Sedang')
+
+        with quant_cols[3]:
+            st.metric("Tren", quant_signals['trend'])
+            if 'Kuat' in quant_signals['trend']:
+                if 'Up' in quant_signals['trend']:
+                    st.markdown('🟢 Tren Naik Kuat')
+                else:
+                    st.markdown('🔴 Tren Turun Kuat')
+            else:
+                st.markdown('⚪ Tren Sideways')
+
+        # Korelasi dengan IHSG
+        st.subheader('📈 Korelasi dengan IHSG')
+        correlation, corr_error = calculate_market_correlation(symbol, period=period)
+
+        if corr_error:
+            st.error(f"Error menghitung korelasi: {corr_error}")
+        elif correlation is not None:
+            corr_col1, corr_col2 = st.columns([1, 2])
+            with corr_col1:
+                st.metric("Korelasi dengan IHSG", f"{correlation:.2f}")
+            with corr_col2:
+                if correlation > 0.7:
+                    st.markdown('🟢 Korelasi Kuat Positif - Saham cenderung bergerak searah dengan IHSG')
+                elif correlation < -0.7:
+                    st.markdown('🔴 Korelasi Kuat Negatif - Saham cenderung bergerak berlawanan dengan IHSG')
+                elif -0.3 <= correlation <= 0.3:
+                    st.markdown('⚪ Korelasi Lemah - Pergerakan relatif independen dari IHSG')
+                else:
+                    st.markdown('🟡 Korelasi Moderat - Ada pengaruh IHSG tapi tidak terlalu kuat')
+
 
         from utils import calculate_macd, calculate_bollinger_bands, calculate_ichimoku
 
