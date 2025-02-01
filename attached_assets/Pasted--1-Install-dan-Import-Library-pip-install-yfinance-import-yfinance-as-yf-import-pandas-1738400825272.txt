@@ -1,0 +1,60 @@
+# === 1. Install dan Import Library ===
+!pip install yfinance
+import yfinance as yf
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# === 2. Ambil Data Saham ===
+symbol = "PGAS.JK"  
+start_date = "2023-01-01"
+end_date = "2024-01-31"
+
+# Unduh data saham
+data = yf.download(symbol, start=start_date, end=end_date, progress=False)
+
+# === 3. Periksa apakah Data Ada ===
+if data.empty:
+    print("⚠️ Error: Data saham tidak ditemukan atau tidak tersedia.")
+else:
+    # === 4. Menghitung Moving Average (20 hari) ===
+    data["20_MA"] = data["Close"].rolling(window=20).mean()
+
+    # Geser MA satu hari ke belakang untuk membandingkan dengan harga saat ini
+    data["20_MA_Shifted"] = data["20_MA"].shift(1)
+
+    # **Hapus NaN setelah pergeseran**
+    data.dropna(inplace=True)
+
+    # **Pastikan indeks sejajar menggunakan .reindex()**
+    close_aligned = data["Close"].reindex(data.index).copy()
+    ma_aligned = data["20_MA_Shifted"].reindex(data.index).copy()
+
+    # **Debugging: Pastikan panjang data sama**
+    print("\nPanjang data setelah reindex:", len(close_aligned), len(ma_aligned))
+
+    # === 5. Menentukan Sinyal Beli & Jual ===
+    data["Buy_Signal"] = close_aligned < ma_aligned  # Sinyal beli
+    data["Sell_Signal"] = close_aligned > ma_aligned  # Sinyal jual
+
+    # === 6. Menampilkan Grafik ===
+    plt.figure(figsize=(12, 6))
+    plt.plot(data.index, data["Close"], label="Harga Saham", color="blue")
+    plt.plot(data.index, data["20_MA"], label="20-Day MA", color="orange", linestyle="dashed")
+
+    # Tandai sinyal beli (hijau) dan jual (merah)
+    plt.scatter(data.index[data["Buy_Signal"]], data["Close"][data["Buy_Signal"]],
+                marker="^", color="green", label="Buy Signal", alpha=1)
+    plt.scatter(data.index[data["Sell_Signal"]], data["Close"][data["Sell_Signal"]],
+                marker="v", color="red", label="Sell Signal", alpha=1)
+
+    plt.title(f"Analisis Saham {symbol}")
+    plt.xlabel("Tanggal")
+    plt.ylabel("Harga Saham (IDR)")
+    plt.legend()
+    plt.grid(True)
+    plt.xticks(rotation=45)
+    plt.show()
+
+    # === 7. Menampilkan Data Terakhir ===
+    print("\nData akhir yang digunakan:")
+    print(data.tail())
