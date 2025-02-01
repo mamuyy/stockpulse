@@ -1,0 +1,2 @@
+# stockpulse
+prakiraan harga saham
