@@ -1,0 +1,26 @@
+.stApp {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.stock-metrics {
+    padding: 1rem;
+    border-radius: 5px;
+    background-color: #f8f9fa;
+    margin: 1rem 0;
+}
+
+.main-chart {
+    margin: 2rem 0;
+    padding: 1rem;
+    border: 1px solid #e1e4e8;
+    border-radius: 5px;
+}
+
+.data-table {
+    margin: 2rem 0;
+}
+
+.stock-header {
+    margin-bottom: 2rem;
+}
