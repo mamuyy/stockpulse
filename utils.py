@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+import numpy as np
 
 def get_stock_data(symbol, period='1y'):
     """Fetch stock data from Yahoo Finance"""
@@ -13,11 +14,39 @@ def get_stock_data(symbol, period='1y'):
     except Exception as e:
         return None, None, str(e)
 
-def create_stock_chart(df):
-    """Create an interactive stock price chart"""
+def calculate_rsi(data, periods=14):
+    """Calculate Relative Strength Index"""
+    delta = data['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=periods).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=periods).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+def calculate_macd(data):
+    """Calculate MACD"""
+    exp1 = data['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = data['Close'].ewm(span=26, adjust=False).mean()
+    macd = exp1 - exp2
+    signal = macd.ewm(span=9, adjust=False).mean()
+    return macd, signal
+
+def calculate_bollinger_bands(data, window=20):
+    """Calculate Bollinger Bands"""
+    sma = data['Close'].rolling(window=window).mean()
+    std = data['Close'].rolling(window=window).std()
+    upper_band = sma + (std * 2)
+    lower_band = sma - (std * 2)
+    return upper_band, lower_band
+
+def create_stock_chart(df, show_indicators=None):
+    """Create an interactive stock price chart with technical indicators"""
+    if show_indicators is None:
+        show_indicators = {'rsi': False, 'macd': False, 'bollinger': False}
+
+    # Create figure with secondary y-axis
     fig = go.Figure()
-    
-    # Candlestick chart
+
+    # Main candlestick chart
     fig.add_trace(go.Candlestick(
         x=df.index,
         open=df['Open'],
@@ -26,7 +55,7 @@ def create_stock_chart(df):
         close=df['Close'],
         name='OHLC'
     ))
-    
+
     # Add volume bars
     fig.add_trace(go.Bar(
         x=df.index,
@@ -36,17 +65,17 @@ def create_stock_chart(df):
         opacity=0.3
     ))
 
-    # Calculate moving averages
+    # Add moving averages
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
-    
+
     fig.add_trace(go.Scatter(
         x=df.index,
         y=df['MA20'],
         name='20-day MA',
         line=dict(color='orange')
     ))
-    
+
     fig.add_trace(go.Scatter(
         x=df.index,
         y=df['MA50'],
@@ -54,25 +83,72 @@ def create_stock_chart(df):
         line=dict(color='blue')
     ))
 
-    fig.update_layout(
-        title='Stock Price Chart',
-        yaxis_title='Price',
-        yaxis2=dict(
-            title='Volume',
-            overlaying='y',
-            side='right'
-        ),
-        xaxis_title='Date',
-        height=600,
-        showlegend=True,
-        legend=dict(
-            yanchor="top",
-            y=0.99,
-            xanchor="left",
-            x=0.01
-        )
-    )
+    # Add technical indicators based on show_indicators
+    if show_indicators['bollinger']:
+        upper_band, lower_band = calculate_bollinger_bands(df)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=upper_band,
+            name='Upper Bollinger Band',
+            line=dict(color='gray', dash='dash')
+        ))
+        fig.add_trace(go.Scatter(
+            x=df.index, y=lower_band,
+            name='Lower Bollinger Band',
+            line=dict(color='gray', dash='dash'),
+            fill='tonexty'
+        ))
 
+    if show_indicators['rsi']:
+        rsi = calculate_rsi(df)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=rsi,
+            name='RSI',
+            yaxis='y3',
+            line=dict(color='purple')
+        ))
+
+    if show_indicators['macd']:
+        macd, signal = calculate_macd(df)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=macd,
+            name='MACD',
+            yaxis='y4',
+            line=dict(color='blue')
+        ))
+        fig.add_trace(go.Scatter(
+            x=df.index, y=signal,
+            name='Signal Line',
+            yaxis='y4',
+            line=dict(color='orange')
+        ))
+
+    # Update layout based on enabled indicators
+    layout_updates = {
+        'title': 'Stock Price Chart',
+        'yaxis': dict(title='Price'),
+        'yaxis2': dict(title='Volume', overlaying='y', side='right'),
+        'height': 800,
+        'showlegend': True,
+        'legend': dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
+    }
+
+    if show_indicators['rsi']:
+        layout_updates['yaxis3'] = dict(
+            title='RSI',
+            overlaying='y',
+            side='right',
+            position=0.97
+        )
+
+    if show_indicators['macd']:
+        layout_updates['yaxis4'] = dict(
+            title='MACD',
+            overlaying='y',
+            side='right',
+            position=0.94
+        )
+
+    fig.update_layout(**layout_updates)
     return fig
 
 def format_large_number(num):
