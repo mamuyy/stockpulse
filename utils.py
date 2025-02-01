@@ -92,33 +92,28 @@ def analyze_volume_trend(data, period=20):
 def calculate_market_correlation(symbol, market_index='^JKSE', period='1y'):
     """Hitung korelasi dengan indeks pasar"""
     try:
-        # Ambil data saham dengan error handling yang lebih baik
-        stock = yf.download(symbol, period=period, progress=False)
-        if stock.empty:
-            return None, "Data saham tidak tersedia"
+        # Ambil data saham dan IHSG secara bersamaan
+        data = yf.download([symbol, market_index], period=period, progress=False)
+        if data.empty:
+            return None, "Data tidak tersedia"
 
-        # Ambil data IHSG
-        market = yf.download(market_index, period=period, progress=False)
-        if market.empty:
-            return None, "Data IHSG tidak tersedia"
+        # Ambil harga penutupan
+        closing_prices = data['Close']
 
-        # Pastikan kedua data memiliki tanggal yang sama
-        common_dates = stock.index.intersection(market.index)
-        if len(common_dates) < 2:
-            return None, "Data tidak cukup untuk menghitung korelasi"
-
-        stock = stock.loc[common_dates]
-        market = market.loc[common_dates]
+        # Cek apakah ada data untuk kedua instrumen
+        if len(closing_prices.columns) != 2:
+            return None, "Data tidak lengkap untuk salah satu instrumen"
 
         # Hitung return harian
-        stock_returns = stock['Close'].pct_change().dropna()
-        market_returns = market['Close'].pct_change().dropna()
+        returns = closing_prices.pct_change().dropna()
+
+        # Cek apakah ada cukup data untuk korelasi
+        if len(returns) < 2:
+            return None, "Data tidak cukup untuk menghitung korelasi"
 
         # Hitung korelasi
-        if len(stock_returns) < 2:
-            return None, "Data return tidak cukup untuk menghitung korelasi"
+        correlation = returns.iloc[:, 0].corr(returns.iloc[:, 1])
 
-        correlation = stock_returns.corr(market_returns)
         if np.isnan(correlation):
             return None, "Tidak dapat menghitung korelasi (hasil NaN)"
 
