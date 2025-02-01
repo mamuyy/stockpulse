@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 from utils import (get_stock_data, create_stock_chart, get_key_metrics,
                   calculate_macd, calculate_bollinger_bands, calculate_ichimoku,
-                  get_quantitative_signals, calculate_market_correlation)
+                  get_quantitative_signals, calculate_market_correlation,
+                  get_dividend_info, calculate_buy_sell_signals)
 import base64
 from datetime import datetime
 
@@ -61,6 +62,44 @@ if symbol:
         for i, (metric, value) in enumerate(metrics.items()):
             with cols[i % 3]:
                 st.metric(metric, value)
+
+        # Setelah menampilkan metrik utama, tambahkan informasi dividen
+        st.subheader('💰 Informasi Dividen')
+        dividend_info = get_dividend_info(symbol)
+
+        if dividend_info['error']:
+            if dividend_info['error'] == 'Tidak ada data dividen':
+                st.info('Tidak ada data dividen untuk saham ini')
+            else:
+                st.error(f"Error mengambil data dividen: {dividend_info['error']}")
+        else:
+            div_col1, div_col2, div_col3 = st.columns(3)
+            with div_col1:
+                st.metric("Dividen Terakhir", f"Rp{dividend_info['last_dividend']:,.2f}")
+            with div_col2:
+                st.metric("Dividend Yield", f"{dividend_info['dividend_yield']:.2f}%")
+            with div_col3:
+                st.metric("Tanggal Dividen Terakhir", dividend_info['last_dividend_date'])
+
+        # Tambahkan sinyal jual/beli sebelum grafik
+        st.subheader('🎯 Sinyal Trading')
+        signals = calculate_buy_sell_signals(hist_data)
+
+        if 'error' in signals:
+            st.error(f"Error menghitung sinyal: {signals['error']}")
+        else:
+            signal_col1, signal_col2 = st.columns([1, 2])
+
+            with signal_col1:
+                signal_color = '🟢' if 'Beli' in signals['current_signal'] else '🔴' if 'Jual' in signals['current_signal'] else '⚪'
+                st.metric("Sinyal Saat Ini", f"{signal_color} {signals['current_signal']}")
+                st.text(f"Per tanggal: {signals['last_signal_date']}")
+
+            with signal_col2:
+                st.markdown("**Analisis:**")
+                for explanation in signals['explanation']:
+                    st.markdown(f"• {explanation}")
+
 
         # Pemilihan Indikator Teknikal
         st.subheader('Indikator Teknikal')

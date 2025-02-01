@@ -92,20 +92,40 @@ def analyze_volume_trend(data, period=20):
 def calculate_market_correlation(symbol, market_index='^JKSE', period='1y'):
     """Hitung korelasi dengan indeks pasar"""
     try:
-        # Ambil data saham
-        stock = yf.download(symbol, period=period)
-        # Ambil data indeks (IHSG untuk Indonesia)
-        market = yf.download(market_index, period=period)
+        # Ambil data saham dengan error handling yang lebih baik
+        stock = yf.download(symbol, period=period, progress=False)
+        if stock.empty:
+            return None, "Data saham tidak tersedia"
+
+        # Ambil data IHSG
+        market = yf.download(market_index, period=period, progress=False)
+        if market.empty:
+            return None, "Data IHSG tidak tersedia"
+
+        # Pastikan kedua data memiliki tanggal yang sama
+        common_dates = stock.index.intersection(market.index)
+        if len(common_dates) < 2:
+            return None, "Data tidak cukup untuk menghitung korelasi"
+
+        stock = stock.loc[common_dates]
+        market = market.loc[common_dates]
 
         # Hitung return harian
-        stock_returns = stock['Close'].pct_change()
-        market_returns = market['Close'].pct_change()
+        stock_returns = stock['Close'].pct_change().dropna()
+        market_returns = market['Close'].pct_change().dropna()
 
         # Hitung korelasi
+        if len(stock_returns) < 2:
+            return None, "Data return tidak cukup untuk menghitung korelasi"
+
         correlation = stock_returns.corr(market_returns)
+        if np.isnan(correlation):
+            return None, "Tidak dapat menghitung korelasi (hasil NaN)"
+
         return correlation, None
+
     except Exception as e:
-        return None, str(e)
+        return None, f"Error: {str(e)}"
 
 def get_quantitative_signals(data):
     """Implementasi sinyal trading kuantitatif sederhana"""
@@ -290,3 +310,91 @@ def create_stock_chart(df, show_indicators=None):
     fig.update_xaxes(rangeslider_visible=True)
 
     return fig
+
+def get_dividend_info(symbol):
+    """Dapatkan informasi dividen saham"""
+    try:
+        stock = yf.Ticker(symbol)
+        dividends = stock.dividends
+        if not dividends.empty:
+            last_dividend = dividends.iloc[-1]
+            dividend_yield = stock.info.get('dividendYield', 0)
+            dividend_date = dividends.index[-1]
+            return {
+                'last_dividend': last_dividend,
+                'dividend_yield': dividend_yield * 100 if dividend_yield else 0,
+                'last_dividend_date': dividend_date.strftime('%Y-%m-%d'),
+                'error': None
+            }
+        return {
+            'last_dividend': 0,
+            'dividend_yield': 0,
+            'last_dividend_date': 'N/A',
+            'error': 'Tidak ada data dividen'
+        }
+    except Exception as e:
+        return {
+            'last_dividend': 0,
+            'dividend_yield': 0,
+            'last_dividend_date': 'N/A',
+            'error': str(e)
+        }
+
+def calculate_buy_sell_signals(data):
+    """Hitung sinyal jual dan beli berdasarkan beberapa indikator"""
+    signals = {
+        'current_signal': None,
+        'last_signal_date': None,
+        'explanation': [],
+        'strength': 0  # -3 (Jual Kuat) sampai +3 (Beli Kuat)
+    }
+
+    try:
+        # 1. RSI Signal
+        rsi = calculate_rsi(data)
+        if rsi.iloc[-1] < 30:
+            signals['strength'] += 1
+            signals['explanation'].append('RSI menunjukkan kondisi oversold (jenuh jual)')
+        elif rsi.iloc[-1] > 70:
+            signals['strength'] -= 1
+            signals['explanation'].append('RSI menunjukkan kondisi overbought (jenuh beli)')
+
+        # 2. Moving Average Signal
+        ma20 = data['Close'].rolling(window=20).mean()
+        ma50 = data['Close'].rolling(window=50).mean()
+
+        if data['Close'].iloc[-1] > ma20.iloc[-1] > ma50.iloc[-1]:
+            signals['strength'] += 1
+            signals['explanation'].append('Harga di atas MA20 dan MA50 (tren naik)')
+        elif data['Close'].iloc[-1] < ma20.iloc[-1] < ma50.iloc[-1]:
+            signals['strength'] -= 1
+            signals['explanation'].append('Harga di bawah MA20 dan MA50 (tren turun)')
+
+        # 3. Volume Signal
+        volume_ma = data['Volume'].rolling(window=20).mean()
+        if data['Volume'].iloc[-1] > 1.5 * volume_ma.iloc[-1]:
+            if signals['strength'] > 0:
+                signals['strength'] += 1
+                signals['explanation'].append('Volume tinggi mendukung tren naik')
+            elif signals['strength'] < 0:
+                signals['strength'] -= 1
+                signals['explanation'].append('Volume tinggi mendukung tren turun')
+
+        # Determine final signal
+        if signals['strength'] >= 2:
+            signals['current_signal'] = 'Beli Kuat'
+        elif signals['strength'] == 1:
+            signals['current_signal'] = 'Beli'
+        elif signals['strength'] == 0:
+            signals['current_signal'] = 'Netral'
+        elif signals['strength'] == -1:
+            signals['current_signal'] = 'Jual'
+        else:
+            signals['current_signal'] = 'Jual Kuat'
+
+        signals['last_signal_date'] = data.index[-1].strftime('%Y-%m-%d')
+
+    except Exception as e:
+        signals['error'] = str(e)
+
+    return signals
