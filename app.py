@@ -54,27 +54,30 @@ if symbol:
 
         # Technical Indicators Selection
         st.subheader('Technical Indicators')
-        indicator_cols = st.columns(3)
+        indicator_cols = st.columns(4)  # Changed from 3 to 4 columns
         with indicator_cols[0]:
             show_rsi = st.checkbox('Show RSI', value=False)
         with indicator_cols[1]:
             show_macd = st.checkbox('Show MACD', value=False)
         with indicator_cols[2]:
             show_bollinger = st.checkbox('Show Bollinger Bands', value=False)
+        with indicator_cols[3]:
+            show_ichimoku = st.checkbox('Show Ichimoku Cloud', value=False)
 
         # Store indicator preferences
         indicators = {
             'rsi': show_rsi,
             'macd': show_macd,
-            'bollinger': show_bollinger
+            'bollinger': show_bollinger,
+            'ichimoku': show_ichimoku
         }
 
         # Price chart
         st.subheader('Price Chart')
         fig = create_stock_chart(hist_data, show_indicators=indicators)
         st.plotly_chart(fig, use_container_width=True)
-        
-        from utils import calculate_macd, calculate_bollinger_bands
+
+        from utils import calculate_macd, calculate_bollinger_bands, calculate_ichimoku
 
         # Technical Analysis Summary
         if any(indicators.values()):
@@ -115,6 +118,20 @@ if symbol:
                         st.write("🟢 Below Lower Band")
                     else:
                         st.write("⚪ Within Bands")
+                col_idx += 1
+
+            if show_ichimoku:
+                with summary_cols[col_idx]:
+                    st.write("Ichimoku Cloud")
+                    tenkan, kijun, senkou_a, senkou_b, _ = calculate_ichimoku(hist_data)
+                    current_price = hist_data['Close'].iloc[-1]
+                    if current_price > senkou_a.iloc[-1] and current_price > senkou_b.iloc[-1]:
+                        st.write("🟢 Strong Bullish (Above Cloud)")
+                    elif current_price < senkou_a.iloc[-1] and current_price < senkou_b.iloc[-1]:
+                        st.write("🔴 Strong Bearish (Below Cloud)")
+                    else:
+                        st.write("⚪ In Cloud (Neutral)")
+                col_idx += 1
 
         # Data table
         st.subheader('Historical Data')

@@ -38,10 +38,37 @@ def calculate_bollinger_bands(data, window=20):
     lower_band = sma - (std * 2)
     return upper_band, lower_band
 
+def calculate_alligator(data):
+    """Calculate Alligator indicator (Jaw, Teeth, Lips)"""
+    # Calculate SMMA for each line
+    jaw = data['Close'].ewm(span=13, adjust=False).mean().shift(8)  # Blue line
+    teeth = data['Close'].ewm(span=8, adjust=False).mean().shift(5)  # Red line
+    lips = data['Close'].ewm(span=5, adjust=False).mean().shift(3)  # Green line
+    return jaw, teeth, lips
+
+def calculate_ichimoku(data):
+    """Calculate Ichimoku Cloud components"""
+    # Convert period to 9, 26, 52 for Tenkan-sen, Kijun-sen, and Senkou Span B
+    high_9 = data['High'].rolling(window=9).max()
+    low_9 = data['Low'].rolling(window=9).min()
+    high_26 = data['High'].rolling(window=26).max()
+    low_26 = data['Low'].rolling(window=26).min()
+    high_52 = data['High'].rolling(window=52).max()
+    low_52 = data['Low'].rolling(window=52).min()
+
+    # Calculate Components
+    tenkan = (high_9 + low_9) / 2
+    kijun = (high_26 + low_26) / 2
+    senkou_a = ((tenkan + kijun) / 2).shift(26)
+    senkou_b = ((high_52 + low_52) / 2).shift(26)
+    chikou = data['Close'].shift(-26)  # 26 periods behind
+
+    return tenkan, kijun, senkou_a, senkou_b, chikou
+
 def create_stock_chart(df, show_indicators=None):
     """Create an interactive stock price chart with technical indicators"""
     if show_indicators is None:
-        show_indicators = {'rsi': False, 'macd': False, 'bollinger': False}
+        show_indicators = {'rsi': False, 'macd': False, 'bollinger': False, 'alligator': False, 'ichimoku': False}
 
     # Create figure with secondary y-axis
     fig = go.Figure()
@@ -69,21 +96,63 @@ def create_stock_chart(df, show_indicators=None):
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
 
-    fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df['MA20'],
-        name='20-day MA',
-        line=dict(color='orange')
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df['MA50'],
-        name='50-day MA',
-        line=dict(color='blue')
-    ))
-
     # Add technical indicators based on show_indicators
+    if show_indicators['ichimoku']:
+        tenkan, kijun, senkou_a, senkou_b, chikou = calculate_ichimoku(df)
+
+        # Add Ichimoku components
+        fig.add_trace(go.Scatter(
+            x=df.index, y=tenkan,
+            name='Tenkan-sen',
+            line=dict(color='red', width=1)
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=df.index, y=kijun,
+            name='Kijun-sen',
+            line=dict(color='blue', width=1)
+        ))
+
+        # Add Senkou Span A and B (Cloud)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=senkou_a,
+            name='Senkou Span A',
+            line=dict(color='green', width=0.5),
+            fill=None
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=df.index, y=senkou_b,
+            name='Senkou Span B',
+            line=dict(color='red', width=0.5),
+            fill='tonexty'  # Fill between Senkou Span A and B
+        ))
+
+        # Add Chikou Span
+        fig.add_trace(go.Scatter(
+            x=df.index, y=chikou,
+            name='Chikou Span',
+            line=dict(color='purple', width=1)
+        ))
+
+    if show_indicators['alligator']:
+        jaw, teeth, lips = calculate_alligator(df)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=jaw,
+            name='Alligator (Jaw)',
+            line=dict(color='blue', width=2)
+        ))
+        fig.add_trace(go.Scatter(
+            x=df.index, y=teeth,
+            name='Alligator (Teeth)',
+            line=dict(color='red', width=2)
+        ))
+        fig.add_trace(go.Scatter(
+            x=df.index, y=lips,
+            name='Alligator (Lips)',
+            line=dict(color='green', width=2)
+        ))
+
     if show_indicators['bollinger']:
         upper_band, lower_band = calculate_bollinger_bands(df)
         fig.add_trace(go.Scatter(
@@ -122,7 +191,7 @@ def create_stock_chart(df, show_indicators=None):
             line=dict(color='orange')
         ))
 
-    # Update layout based on enabled indicators
+    # Update layout
     layout_updates = {
         'title': 'Stock Price Chart',
         'yaxis': dict(title='Price'),
