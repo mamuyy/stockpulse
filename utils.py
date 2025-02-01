@@ -4,8 +4,32 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import numpy as np
 
+def format_large_number(num):
+    """Format angka besar dengan akhiran Rb, Jt, M"""
+    if not num:
+        return "N/A"
+    if num >= 1e9:
+        return f"{num/1e9:.2f}M"
+    elif num >= 1e6:
+        return f"{num/1e6:.2f}Jt"
+    elif num >= 1e3:
+        return f"{num/1e3:.2f}Rb"
+    return f"{num:.2f}"
+
+def get_key_metrics(info):
+    """Ekstrak metrik utama dari info saham"""
+    metrics = {
+        'Kapitalisasi Pasar': format_large_number(info.get('marketCap', 0)),
+        'Rasio P/E': f"{info.get('trailingPE', 0):.2f}",
+        'Tertinggi 52 Minggu': f"Rp{info.get('fiftyTwoWeekHigh', 0):.2f}",
+        'Terendah 52 Minggu': f"Rp{info.get('fiftyTwoWeekLow', 0):.2f}",
+        'Volume': format_large_number(info.get('volume', 0)),
+        'Rata-rata Volume': format_large_number(info.get('averageVolume', 0))
+    }
+    return metrics
+
 def get_stock_data(symbol, period='1y'):
-    """Fetch stock data from Yahoo Finance"""
+    """Ambil data saham dari Yahoo Finance"""
     try:
         stock = yf.Ticker(symbol)
         hist = stock.history(period=period)
@@ -48,7 +72,6 @@ def calculate_alligator(data):
 
 def calculate_ichimoku(data):
     """Calculate Ichimoku Cloud components"""
-    # Convert period to 9, 26, 52 for Tenkan-sen, Kijun-sen, and Senkou Span B
     high_9 = data['High'].rolling(window=9).max()
     low_9 = data['Low'].rolling(window=9).min()
     high_26 = data['High'].rolling(window=26).max()
@@ -56,24 +79,23 @@ def calculate_ichimoku(data):
     high_52 = data['High'].rolling(window=52).max()
     low_52 = data['Low'].rolling(window=52).min()
 
-    # Calculate Components
     tenkan = (high_9 + low_9) / 2
     kijun = (high_26 + low_26) / 2
     senkou_a = ((tenkan + kijun) / 2).shift(26)
     senkou_b = ((high_52 + low_52) / 2).shift(26)
-    chikou = data['Close'].shift(-26)  # 26 periods behind
+    chikou = data['Close'].shift(-26)
 
     return tenkan, kijun, senkou_a, senkou_b, chikou
 
 def create_stock_chart(df, show_indicators=None):
-    """Create an interactive stock price chart with technical indicators"""
+    """Buat grafik harga saham interaktif dengan indikator teknikal"""
     if show_indicators is None:
-        show_indicators = {'rsi': False, 'macd': False, 'bollinger': False, 'alligator': False, 'ichimoku': False}
+        show_indicators = {'rsi': False, 'macd': False, 'bollinger': False, 'ichimoku': False}
 
-    # Create figure with secondary y-axis
+    # Buat figure dengan sumbu y sekunder
     fig = go.Figure()
 
-    # Main candlestick chart
+    # Grafik candlestick utama
     fig.add_trace(go.Candlestick(
         x=df.index,
         open=df['Open'],
@@ -83,7 +105,7 @@ def create_stock_chart(df, show_indicators=None):
         name='OHLC'
     ))
 
-    # Add volume bars
+    # Tambahkan volume
     fig.add_trace(go.Bar(
         x=df.index,
         y=df['Volume'],
@@ -92,7 +114,7 @@ def create_stock_chart(df, show_indicators=None):
         opacity=0.3
     ))
 
-    # Add moving averages
+    # Calculate moving averages
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA50'] = df['Close'].rolling(window=50).mean()
 
@@ -103,35 +125,45 @@ def create_stock_chart(df, show_indicators=None):
         # Add Ichimoku components
         fig.add_trace(go.Scatter(
             x=df.index, y=tenkan,
-            name='Tenkan-sen',
+            name='Tenkan-sen (Garis Konversi)',
             line=dict(color='red', width=1)
         ))
 
         fig.add_trace(go.Scatter(
             x=df.index, y=kijun,
-            name='Kijun-sen',
+            name='Kijun-sen (Garis Dasar)',
             line=dict(color='blue', width=1)
         ))
 
+        # Create future dates array for cloud
+        future_dates = pd.date_range(start=df.index[-1], periods=26)
+        dates_for_cloud = pd.concat([pd.Series(df.index), pd.Series(future_dates)])
+
+        # Extend senkou spans with NaN values for future dates
+        senkou_a_extended = pd.concat([senkou_a, pd.Series([None] * 26)])
+        senkou_b_extended = pd.concat([senkou_b, pd.Series([None] * 26)])
+
         # Add Senkou Span A and B (Cloud)
         fig.add_trace(go.Scatter(
-            x=df.index, y=senkou_a,
-            name='Senkou Span A',
-            line=dict(color='green', width=0.5),
+            x=dates_for_cloud,
+            y=senkou_a_extended,
+            name='Senkou Span A (Garis Depan A)',
+            line=dict(color='rgba(76, 175, 80, 0.3)'),
             fill=None
         ))
 
         fig.add_trace(go.Scatter(
-            x=df.index, y=senkou_b,
-            name='Senkou Span B',
-            line=dict(color='red', width=0.5),
-            fill='tonexty'  # Fill between Senkou Span A and B
+            x=dates_for_cloud,
+            y=senkou_b_extended,
+            name='Senkou Span B (Garis Depan B)',
+            line=dict(color='rgba(255, 82, 82, 0.3)'),
+            fill='tonexty'
         ))
 
-        # Add Chikou Span
         fig.add_trace(go.Scatter(
-            x=df.index, y=chikou,
-            name='Chikou Span',
+            x=df.index,
+            y=chikou,
+            name='Chikou Span (Garis Tertinggal)',
             line=dict(color='purple', width=1)
         ))
 
@@ -157,15 +189,37 @@ def create_stock_chart(df, show_indicators=None):
         upper_band, lower_band = calculate_bollinger_bands(df)
         fig.add_trace(go.Scatter(
             x=df.index, y=upper_band,
-            name='Upper Bollinger Band',
+            name='Pita Bollinger Atas',
             line=dict(color='gray', dash='dash')
         ))
         fig.add_trace(go.Scatter(
             x=df.index, y=lower_band,
-            name='Lower Bollinger Band',
+            name='Pita Bollinger Bawah',
             line=dict(color='gray', dash='dash'),
             fill='tonexty'
         ))
+
+
+    # Update layout
+    layout_updates = {
+        'title': 'Grafik Harga Saham',
+        'yaxis': dict(title='Harga', domain=[0.3, 1]),
+        'yaxis2': dict(
+            title='Volume',
+            domain=[0, 0.2],
+            anchor='x'
+        ),
+        'height': 800,
+        'showlegend': True,
+        'legend': dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor='rgba(255, 255, 255, 0.8)'
+        ),
+        'margin': dict(t=30, l=60, r=60, b=30)
+    }
 
     if show_indicators['rsi']:
         rsi = calculate_rsi(df)
@@ -175,6 +229,12 @@ def create_stock_chart(df, show_indicators=None):
             yaxis='y3',
             line=dict(color='purple')
         ))
+        layout_updates['yaxis3'] = dict(
+            title='RSI',
+            overlaying='y',
+            side='right',
+            position=0.97
+        )
 
     if show_indicators['macd']:
         macd, signal = calculate_macd(df)
@@ -186,30 +246,10 @@ def create_stock_chart(df, show_indicators=None):
         ))
         fig.add_trace(go.Scatter(
             x=df.index, y=signal,
-            name='Signal Line',
+            name='Garis Sinyal',
             yaxis='y4',
             line=dict(color='orange')
         ))
-
-    # Update layout
-    layout_updates = {
-        'title': 'Stock Price Chart',
-        'yaxis': dict(title='Price'),
-        'yaxis2': dict(title='Volume', overlaying='y', side='right'),
-        'height': 800,
-        'showlegend': True,
-        'legend': dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
-    }
-
-    if show_indicators['rsi']:
-        layout_updates['yaxis3'] = dict(
-            title='RSI',
-            overlaying='y',
-            side='right',
-            position=0.97
-        )
-
-    if show_indicators['macd']:
         layout_updates['yaxis4'] = dict(
             title='MACD',
             overlaying='y',
@@ -218,26 +258,6 @@ def create_stock_chart(df, show_indicators=None):
         )
 
     fig.update_layout(**layout_updates)
+    fig.update_xaxes(rangeslider_visible=True)
+
     return fig
-
-def format_large_number(num):
-    """Format large numbers with K, M, B suffixes"""
-    if num >= 1e9:
-        return f"{num/1e9:.2f}B"
-    elif num >= 1e6:
-        return f"{num/1e6:.2f}M"
-    elif num >= 1e3:
-        return f"{num/1e3:.2f}K"
-    return f"{num:.2f}"
-
-def get_key_metrics(info):
-    """Extract key metrics from stock info"""
-    metrics = {
-        'Market Cap': format_large_number(info.get('marketCap', 0)),
-        'P/E Ratio': f"{info.get('trailingPE', 0):.2f}",
-        '52 Week High': f"${info.get('fiftyTwoWeekHigh', 0):.2f}",
-        '52 Week Low': f"${info.get('fiftyTwoWeekLow', 0):.2f}",
-        'Volume': format_large_number(info.get('volume', 0)),
-        'Avg Volume': format_large_number(info.get('averageVolume', 0))
-    }
-    return metrics
