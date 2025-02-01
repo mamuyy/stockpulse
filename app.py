@@ -3,9 +3,12 @@ import pandas as pd
 from utils import (get_stock_data, create_stock_chart, get_key_metrics,
                   calculate_macd, calculate_bollinger_bands, calculate_ichimoku,
                   get_quantitative_signals, calculate_market_correlation,
-                  get_dividend_info, calculate_buy_sell_signals, analyze_multibagger_potential)
+                  get_dividend_info, calculate_buy_sell_signals, analyze_multibagger_potential,
+                  analyze_historical_performance, identify_support_resistance, calculate_momentum_indicators,
+                  backtest_quantitative_strategy)
 import base64
 from datetime import datetime
+import plotly.graph_objects as go
 
 # Konfigurasi halaman
 st.set_page_config(
@@ -100,7 +103,6 @@ if symbol:
                 for explanation in signals['explanation']:
                     st.markdown(f"• {explanation}")
 
-
         # Pemilihan Indikator Teknikal
         st.subheader('Indikator Teknikal')
         indicator_cols = st.columns(4)
@@ -132,44 +134,126 @@ if symbol:
         # Dapatkan sinyal kuantitatif
         quant_signals = get_quantitative_signals(hist_data)
 
-        # Tampilkan dalam 4 kolom
+        # Tampilkan Rekomendasi Utama
+        st.markdown(f"## {quant_signals['rekomendasi']}")
+        st.markdown(f"*Skor Total: {quant_signals['skor_total']}*")
+
+        # Tampilkan alasan-alasan
+        st.markdown("### Alasan Rekomendasi:")
+        for alasan in quant_signals['alasan']:
+            st.markdown(alasan)
+
+        # Tampilkan detail analisis dalam 4 kolom
+        st.markdown("### Detail Analisis:")
         quant_cols = st.columns(4)
 
         with quant_cols[0]:
             st.metric("Momentum", quant_signals['momentum'])
-            if quant_signals['momentum'] == 'Bullish':
+            if 'Bullish' in quant_signals['momentum']:
                 st.markdown('🟢 Momentum Positif')
-            else:
+            elif 'Bearish' in quant_signals['momentum']:
                 st.markdown('🔴 Momentum Negatif')
+            else:
+                st.markdown('⚪ Momentum Netral')
 
         with quant_cols[1]:
             st.metric("Volume", quant_signals['volume'])
-            if quant_signals['volume'] == 'Di Atas Normal':
-                st.markdown('🟢 Volume Tinggi')
-            elif quant_signals['volume'] == 'Di Bawah Normal':
-                st.markdown('🔴 Volume Rendah')
+            if 'Tinggi' in quant_signals['volume']:
+                st.markdown('🟢 Volume Signifikan')
+            elif 'Rendah' in quant_signals['volume']:
+                st.markdown('🔴 Volume Lemah')
             else:
                 st.markdown('⚪ Volume Normal')
 
         with quant_cols[2]:
-            st.metric("Volatilitas", quant_signals['volatility'])
-            volatility_value = float(quant_signals['volatility'].strip('%'))
-            if volatility_value > 40:
-                st.markdown('🔴 Volatilitas Tinggi')
-            elif volatility_value < 20:
-                st.markdown('🟢 Volatilitas Rendah')
-            else:
-                st.markdown('⚪ Volatilitas Sedang')
-
-        with quant_cols[3]:
             st.metric("Tren", quant_signals['trend'])
-            if 'Kuat' in quant_signals['trend']:
-                if 'Up' in quant_signals['trend']:
-                    st.markdown('🟢 Tren Naik Kuat')
-                else:
-                    st.markdown('🔴 Tren Turun Kuat')
+            if 'Uptrend' in quant_signals['trend']:
+                st.markdown('🟢 Tren Naik')
+            elif 'Downtrend' in quant_signals['trend']:
+                st.markdown('🔴 Tren Turun')
             else:
                 st.markdown('⚪ Tren Sideways')
+
+        with quant_cols[3]:
+            st.metric("Volatilitas", quant_signals['volatility'])
+            st.markdown(f"ℹ️ {quant_signals['volatility_level']}")
+
+        # Tambahkan catatan penting
+        st.markdown("""
+        > **Catatan Penting:**
+        > - Analisis kuantitatif ini menggunakan metode yang terinspirasi dari pendekatan trading James Simons
+        > - Rekomendasi berdasarkan kombinasi momentum, volume, tren, dan volatilitas
+        > - Selalu lakukan analisis fundamental dan pertimbangkan faktor eksternal
+        > - Gunakan stop loss dan manajemen risiko yang baik
+        """)
+
+        # Backtesting Analysis
+        st.subheader('🔄 Backtesting Hasil Strategi')
+        backtest_results = backtest_quantitative_strategy(hist_data)
+
+        # Display key metrics
+        metrics = backtest_results['metrics']
+        metric_cols = st.columns(4)
+
+        with metric_cols[0]:
+            st.metric("Total Return", f"{metrics['total_return']:.1f}%")
+            st.metric("Win Rate", f"{metrics['win_rate']:.1f}%")
+
+        with metric_cols[1]:
+            st.metric("Total Trades", str(metrics['total_trades']))
+            st.metric("Profitable Trades", str(metrics['profitable_trades']))
+
+        with metric_cols[2]:
+            st.metric("Avg Return per Trade", f"{metrics['avg_return_per_trade']:.1f}%")
+            st.metric("Losing Trades", str(metrics['losing_trades']))
+
+        with metric_cols[3]:
+            st.metric("Maximum Drawdown", f"{metrics['max_drawdown']:.1f}%")
+
+        # Show trade history
+        st.subheader("📊 Riwayat Trading")
+        if backtest_results['trades']:
+            trades_df = pd.DataFrame([
+                {
+                    'Tanggal': trade['date'],
+                    'Tipe': 'Beli' if trade['type'] == 'entry' else 'Jual',
+                    'Harga': f"Rp{trade['price']:,.2f}",
+                    'Jumlah Saham': f"{trade['shares']:,}",
+                    'Profit/Loss': f"Rp{trade.get('profit', 0):,.2f}" if trade['type'] == 'exit' else '-',
+                    'Return': f"{trade.get('profit_pct', 0):.1f}%" if trade['type'] == 'exit' else '-',
+                    'Sinyal': trade['signals']['rekomendasi']
+                }
+                for trade in backtest_results['trades']
+            ])
+            st.dataframe(trades_df)
+
+            # Plot equity curve
+            equity_df = pd.DataFrame(backtest_results['equity_curve'])
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=equity_df['date'],
+                y=equity_df['value'],
+                name='Portfolio Value',
+                line=dict(color='blue')
+            ))
+            fig.update_layout(
+                title='Equity Curve',
+                xaxis_title='Tanggal',
+                yaxis_title='Nilai Portfolio (Rp)',
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Belum ada sinyal trading yang dihasilkan dalam periode ini")
+
+        # Add warning note
+        st.markdown("""
+        > **Catatan Penting tentang Backtesting:**
+        > - Hasil backtesting adalah simulasi dan tidak menjamin kinerja di masa depan
+        > - Biaya transaksi dan slippage tidak diperhitungkan dalam simulasi
+        > - Strategi mungkin perlu disesuaikan dengan kondisi pasar terkini
+        > - Selalu gunakan manajemen risiko yang baik dalam trading sesungguhnya
+        """)
 
         # Korelasi dengan IHSG
         st.subheader('📈 Korelasi dengan IHSG')
@@ -225,9 +309,114 @@ if symbol:
             > - Lakukan riset mendalam sebelum mengambil keputusan investasi
             > - Perhatikan juga faktor makro ekonomi dan kondisi industri
             """)
+        
+        # After multibagger section, add historical analysis
+        st.markdown('---')
+        st.subheader('📊 Analisis Historis')
 
+        # Historical Performance Analysis
+        historical_perf, hist_error = analyze_historical_performance(symbol)
+        if hist_error:
+            st.error(f"Error dalam analisis historis: {hist_error}")
+        else:
+            # Create tabs for different time periods
+            period_tabs = st.tabs(['1 Tahun', '3 Tahun', '5 Tahun'])
+            periods = ['1y', '3y', '5y']
 
-        from utils import calculate_macd, calculate_bollinger_bands, calculate_ichimoku
+            for tab, period in zip(period_tabs, periods):
+                with tab:
+                    if historical_perf[period]:
+                        perf = historical_perf[period]
+
+                        # Display metrics in columns
+                        cols = st.columns(3)
+
+                        with cols[0]:
+                            st.metric("Total Return", perf['total_return'])
+                            st.metric("Volatilitas", perf['volatility'])
+
+                        with cols[1]:
+                            st.metric("Harga Tertinggi", f"Rp{perf['max_price']:,.2f}")
+                            st.metric("Harga Terendah", f"Rp{perf['min_price']:,.2f}")
+
+                        with cols[2]:
+                            st.metric("Tren Volume", perf['volume_trend'])
+                            st.metric("Maximum Drawdown", perf['max_drawdown'])
+                    else:
+                        st.info(f"Data tidak tersedia untuk periode {period}")
+
+        # Support & Resistance Analysis
+        st.subheader('🎯 Level Support & Resistance')
+        levels, level_error = identify_support_resistance(hist_data)
+
+        if level_error:
+            st.error(f"Error mengidentifikasi level: {level_error}")
+        else:
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("### Level Support")
+                for level in levels['support']:
+                    st.markdown(f"• Rp{level['price']:,.2f} ({level['date']})")
+
+            with col2:
+                st.markdown("### Level Resistance")
+                for level in levels['resistance']:
+                    st.markdown(f"• Rp{level['price']:,.2f} ({level['date']})")
+
+        # Momentum Analysis
+        st.subheader('📈 Analisis Momentum')
+        momentum_indicators, mom_error = calculate_momentum_indicators(hist_data)
+
+        if mom_error:
+            st.error(f"Error menghitung indikator momentum: {mom_error}")
+        else:
+            # Display latest momentum values
+            mom_cols = st.columns(3)
+
+            with mom_cols[0]:
+                latest_roc = momentum_indicators['ROC_20'].iloc[-1]
+                st.metric("Rate of Change (20 hari)", 
+                         f"{latest_roc:.1f}%",
+                         delta=f"{latest_roc - momentum_indicators['ROC_20'].iloc[-2]:.1f}%")
+
+            with mom_cols[1]:
+                latest_macd = momentum_indicators['MACD'].iloc[-1]
+                st.metric("MACD",
+                         f"{latest_macd:.2f}",
+                         delta=f"{latest_macd - momentum_indicators['MACD'].iloc[-2]:.2f}")
+
+            with mom_cols[2]:
+                latest_rsi = momentum_indicators['RSI'].iloc[-1]
+                st.metric("RSI",
+                         f"{latest_rsi:.1f}",
+                         delta=f"{latest_rsi - momentum_indicators['RSI'].iloc[-2]:.1f}")
+
+            # Add interpretation
+            st.markdown("### Interpretasi")
+
+            # ROC Interpretation
+            if latest_roc > 10:
+                st.markdown("🟢 Momentum sangat positif (ROC > 10%)")
+            elif latest_roc > 5:
+                st.markdown("🟡 Momentum positif moderat (ROC > 5%)")
+            elif latest_roc < -10:
+                st.markdown("🔴 Momentum sangat negatif (ROC < -10%)")
+            elif latest_roc < -5:
+                st.markdown("🟠 Momentum negatif moderat (ROC < -5%)")
+            else:
+                st.markdown("⚪ Momentum netral (-5% < ROC < 5%)")
+
+            # RSI Interpretation
+            if latest_rsi > 70:
+                st.markdown("🔴 Overbought (RSI > 70)")
+            elif latest_rsi < 30:
+                st.markdown("🟢 Oversold (RSI < 30)")
+            else:
+                st.markdown("⚪ RSI dalam range normal (30-70)")
+
+        st.markdown('---')
+
 
         # Ringkasan Analisis Teknikal
         if any(indicators.values()):
