@@ -393,3 +393,97 @@ def calculate_buy_sell_signals(data):
         signals['error'] = str(e)
 
     return signals
+
+def analyze_multibagger_potential(symbol):
+    """Analisis potensi multibagger dari sebuah saham"""
+    try:
+        stock = yf.Ticker(symbol)
+        info = stock.info
+        financials = stock.financials
+
+        analysis = {
+            'potensi': 0,  # Skala 0-10
+            'alasan': [],
+            'metrics': {},
+            'error': None
+        }
+
+        # 1. Analisis Pertumbuhan Pendapatan
+        if not financials.empty and 'Total Revenue' in financials.index:
+            rev_growth = ((financials.loc['Total Revenue'][0] / financials.loc['Total Revenue'][1]) - 1) * 100
+            analysis['metrics']['pertumbuhan_pendapatan'] = f"{rev_growth:.1f}%"
+            if rev_growth > 20:
+                analysis['potensi'] += 2
+                analysis['alasan'].append("✅ Pertumbuhan pendapatan yang kuat (>20%)")
+            elif rev_growth > 10:
+                analysis['potensi'] += 1
+                analysis['alasan'].append("✅ Pertumbuhan pendapatan yang baik (>10%)")
+
+        # 2. Analisis ROE
+        if 'returnOnEquity' in info and info['returnOnEquity']:
+            roe = info['returnOnEquity'] * 100
+            analysis['metrics']['ROE'] = f"{roe:.1f}%"
+            if roe > 20:
+                analysis['potensi'] += 2
+                analysis['alasan'].append("✅ ROE sangat baik (>20%)")
+            elif roe > 15:
+                analysis['potensi'] += 1
+                analysis['alasan'].append("✅ ROE yang baik (>15%)")
+
+        # 3. Analisis Valuasi
+        if 'trailingPE' in info and info['trailingPE']:
+            pe = info['trailingPE']
+            analysis['metrics']['PE_Ratio'] = f"{pe:.1f}"
+            if pe < 15:
+                analysis['potensi'] += 2
+                analysis['alasan'].append("✅ Valuasi menarik (PE < 15)")
+            elif pe < 20:
+                analysis['potensi'] += 1
+                analysis['alasan'].append("✅ Valuasi wajar (PE < 20)")
+
+        # 4. Analisis Hutang
+        if 'totalDebt' in info and 'totalCash' in info:
+            debt_to_cash = info['totalDebt'] / info['totalCash'] if info['totalCash'] > 0 else float('inf')
+            analysis['metrics']['Debt_to_Cash'] = f"{debt_to_cash:.1f}"
+            if debt_to_cash < 1:
+                analysis['potensi'] += 2
+                analysis['alasan'].append("✅ Posisi keuangan yang kuat (Hutang < Kas)")
+            elif debt_to_cash < 2:
+                analysis['potensi'] += 1
+                analysis['alasan'].append("✅ Posisi keuangan yang sehat")
+
+        # 5. Analisis Tren Harga
+        hist = stock.history(period="1y")
+        if not hist.empty:
+            price_change = ((hist['Close'][-1] / hist['Close'][0]) - 1) * 100
+            analysis['metrics']['perubahan_harga_1y'] = f"{price_change:.1f}%"
+
+            # Volume trend
+            avg_volume = hist['Volume'].mean()
+            recent_volume = hist['Volume'][-20:].mean()
+            volume_change = ((recent_volume / avg_volume) - 1) * 100
+            analysis['metrics']['tren_volume'] = "Meningkat" if volume_change > 20 else "Stabil" if volume_change > -20 else "Menurun"
+
+            if volume_change > 20 and price_change > 0:
+                analysis['potensi'] += 2
+                analysis['alasan'].append("✅ Tren harga dan volume positif")
+
+        # Kategorikan potensi
+        if analysis['potensi'] >= 8:
+            analysis['kategori'] = "Potensi Multibagger Tinggi 🌟"
+        elif analysis['potensi'] >= 6:
+            analysis['kategori'] = "Potensi Multibagger Moderat ⭐"
+        elif analysis['potensi'] >= 4:
+            analysis['kategori'] = "Potensi Multibagger Rendah 📊"
+        else:
+            analysis['kategori'] = "Belum Menunjukkan Potensi Multibagger 📉"
+
+        return analysis
+
+    except Exception as e:
+        return {
+            'potensi': 0,
+            'alasan': [],
+            'metrics': {},
+            'error': str(e)
+        }

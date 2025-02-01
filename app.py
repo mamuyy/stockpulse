@@ -3,7 +3,7 @@ import pandas as pd
 from utils import (get_stock_data, create_stock_chart, get_key_metrics,
                   calculate_macd, calculate_bollinger_bands, calculate_ichimoku,
                   get_quantitative_signals, calculate_market_correlation,
-                  get_dividend_info, calculate_buy_sell_signals)
+                  get_dividend_info, calculate_buy_sell_signals, analyze_multibagger_potential)
 import base64
 from datetime import datetime
 
@@ -190,6 +190,41 @@ if symbol:
                     st.markdown('⚪ Korelasi Lemah - Pergerakan relatif independen dari IHSG')
                 else:
                     st.markdown('🟡 Korelasi Moderat - Ada pengaruh IHSG tapi tidak terlalu kuat')
+        
+        # Tambahkan setelah bagian korelasi IHSG
+        st.subheader('🚀 Analisis Potensi Multibagger')
+        multibagger = analyze_multibagger_potential(symbol)
+
+        if multibagger['error']:
+            st.error(f"Error dalam analisis multibagger: {multibagger['error']}")
+        else:
+            # Tampilkan kategori dan skor
+            st.markdown(f"### {multibagger['kategori']}")
+            st.progress(multibagger['potensi'] / 10)
+            st.markdown(f"Skor Potensi: {multibagger['potensi']}/10")
+
+            # Tampilkan metrik-metrik penting
+            if multibagger['metrics']:
+                st.subheader('📊 Metrik Utama')
+                metric_cols = st.columns(len(multibagger['metrics']))
+                for i, (metric, value) in enumerate(multibagger['metrics'].items()):
+                    with metric_cols[i]:
+                        metric_name = metric.replace('_', ' ').title()
+                        st.metric(metric_name, value)
+
+            # Tampilkan alasan-alasan
+            if multibagger['alasan']:
+                st.subheader('📝 Analisis Detail')
+                for alasan in multibagger['alasan']:
+                    st.markdown(alasan)
+
+            # Tambahkan catatan penting
+            st.markdown("""
+            > **Catatan Penting:**
+            > - Analisis ini hanya merupakan indikator awal dan bukan rekomendasi investasi
+            > - Lakukan riset mendalam sebelum mengambil keputusan investasi
+            > - Perhatikan juga faktor makro ekonomi dan kondisi industri
+            """)
 
 
         from utils import calculate_macd, calculate_bollinger_bands, calculate_ichimoku
