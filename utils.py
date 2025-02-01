@@ -62,14 +62,6 @@ def calculate_bollinger_bands(data, window=20):
     lower_band = sma - (std * 2)
     return upper_band, lower_band
 
-def calculate_alligator(data):
-    """Calculate Alligator indicator (Jaw, Teeth, Lips)"""
-    # Calculate SMMA for each line
-    jaw = data['Close'].ewm(span=13, adjust=False).mean().shift(8)  # Blue line
-    teeth = data['Close'].ewm(span=8, adjust=False).mean().shift(5)  # Red line
-    lips = data['Close'].ewm(span=5, adjust=False).mean().shift(3)  # Green line
-    return jaw, teeth, lips
-
 def calculate_ichimoku(data):
     """Calculate Ichimoku Cloud components"""
     high_9 = data['High'].rolling(window=9).max()
@@ -167,24 +159,6 @@ def create_stock_chart(df, show_indicators=None):
             line=dict(color='purple', width=1)
         ))
 
-    if show_indicators['alligator']:
-        jaw, teeth, lips = calculate_alligator(df)
-        fig.add_trace(go.Scatter(
-            x=df.index, y=jaw,
-            name='Alligator (Jaw)',
-            line=dict(color='blue', width=2)
-        ))
-        fig.add_trace(go.Scatter(
-            x=df.index, y=teeth,
-            name='Alligator (Teeth)',
-            line=dict(color='red', width=2)
-        ))
-        fig.add_trace(go.Scatter(
-            x=df.index, y=lips,
-            name='Alligator (Lips)',
-            line=dict(color='green', width=2)
-        ))
-
     if show_indicators['bollinger']:
         upper_band, lower_band = calculate_bollinger_bands(df)
         fig.add_trace(go.Scatter(
@@ -198,7 +172,6 @@ def create_stock_chart(df, show_indicators=None):
             line=dict(color='gray', dash='dash'),
             fill='tonexty'
         ))
-
 
     # Update layout
     layout_updates = {
